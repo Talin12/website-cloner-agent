@@ -319,7 +319,7 @@ async function reactTurn(client, messages) {
     console.log("\nTHINK");
 
     const resp = await client.chat.completions.create({
-      model: 'llama3-70b-8192',
+      model: 'llama-3.3-70b-versatile',
       messages,
       tools,
       tool_choice: "auto",
@@ -368,9 +368,9 @@ async function reactTurn(client, messages) {
 }
 
 async function main() {
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     console.error(
-      "Missing OPENAI_API_KEY. Set it in your environment or a .env file at project root."
+      "Missing GROQ_API_KEY. Set it in your environment or a .env file at project root."
     );
     process.exit(1);
   }
