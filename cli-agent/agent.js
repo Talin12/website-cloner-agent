@@ -3,6 +3,7 @@ require("dotenv/config");
 const axios = require("axios");
 const { OpenAI } = require("openai");
 const { exec } = require("child_process");
+const cheerio = require("cheerio");
 const fs = require("fs/promises");
 const path = require("path");
 const readline = require("readline");
@@ -60,11 +61,80 @@ async function createFile(filepath = "", content = "") {
   };
 }
 
+async function fetchWebsiteText(url = "") {
+  const input = String(url || "").trim();
+  if (!input) throw new Error("fetchWebsiteText requires a non-empty url.");
+
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch {
+    throw new Error(`Invalid URL: ${input}`);
+  }
+
+  if (!/^https?:$/.test(parsed.protocol)) {
+    throw new Error("Only http(s) URLs are supported.");
+  }
+
+  const { data: html } = await axios.get(parsed.toString(), {
+    responseType: "text",
+    timeout: 20000,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari",
+      Accept: "text/html,application/xhtml+xml",
+    },
+    // Some sites block non-browser clients; this is best-effort.
+    validateStatus: (s) => s >= 200 && s < 400,
+  });
+
+  const $ = cheerio.load(html);
+
+  $("script,noscript,style,svg,canvas,iframe").remove();
+  const title = $("title").first().text().trim();
+  const metaDescription =
+    $('meta[name="description"]').attr("content")?.trim() || "";
+
+  const headings = [];
+  $("h1,h2,h3").each((_, el) => {
+    const tag = (el.tagName || "").toLowerCase();
+    const text = $(el).text().replace(/\s+/g, " ").trim();
+    if (!text) return;
+    headings.push({ tag, text });
+  });
+
+  const links = [];
+  $("a[href]").each((_, el) => {
+    const href = ($(el).attr("href") || "").trim();
+    const text = $(el).text().replace(/\s+/g, " ").trim();
+    if (!href) return;
+    if (href.startsWith("#")) return;
+    links.push({ text: text.slice(0, 80), href: href.slice(0, 200) });
+  });
+
+  const bodyText = $("body")
+    .text()
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 8000);
+
+  return {
+    ok: true,
+    url: parsed.toString(),
+    title,
+    metaDescription,
+    headings: headings.slice(0, 60),
+    links: links.slice(0, 60),
+    bodyText,
+  };
+}
+
 const tool_map = {
   getTheWeatherOfCity,
   getGithubDetailsAboutUser,
   executeCommand,
   createFile,
+  fetchWebsiteText,
 };
 
 const tools = [
@@ -135,6 +205,25 @@ const tools = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "fetchWebsiteText",
+      description:
+        "Fetch a URL's HTML and extract lightweight text structure (title, headings, links, body text snippet).",
+      parameters: {
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "The website URL to fetch, e.g. https://www.scaler.com",
+          },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const system_prompt = `
@@ -146,10 +235,13 @@ You have tools available:
 - getGithubDetailsAboutUser(username)
 - executeCommand(cmd)
 - createFile(filepath, content)
+- fetchWebsiteText(url)
 
 CRITICAL rules:
-- When asked to "clone" a website (e.g. Scaler Academy), you MUST systematically THINK about page structure and assets.
-- You MUST use createFile to actually generate real files for a working webpage:
+- When asked to "clone" a website (e.g. Scaler Academy), you MUST FIRST call fetchWebsiteText(url) for the target site (e.g. https://www.scaler.com).
+- You MUST OBSERVE real output from fetchWebsiteText: title, headings, important links, and bodyText snippet.
+- THEN THINK about the page layout and design, and only then start generating files.
+- You MUST use createFile to actually generate real files for a working webpage (do it over multiple tool calls):
   - At minimum create: index.html, styles.css, script.js
   - The page MUST include: Header, Hero Section, Footer
   - Link the CSS and JS from the HTML so it runs in a browser.
@@ -211,6 +303,8 @@ async function runToolCall(toolCall) {
     result = await fn(args.cmd);
   } else if (name === "createFile") {
     result = await fn(args.filepath, args.content);
+  } else if (name === "fetchWebsiteText") {
+    result = await fn(args.url);
   } else {
     result = await fn(args);
   }
@@ -225,7 +319,7 @@ async function reactTurn(client, messages) {
     console.log("\nTHINK");
 
     const resp = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       messages,
       tools,
       tool_choice: "auto",
