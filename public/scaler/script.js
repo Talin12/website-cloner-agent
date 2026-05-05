@@ -2,7 +2,7 @@
    SCALER ACADEMY — script.js
    ============================================================ */
 
-   (function () {
+(function () {
     'use strict';
 
     // ─── Sticky header shadow on scroll ──────────────────────

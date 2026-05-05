@@ -1539,7 +1539,7 @@ async function reactTurn(client, messages) {
     console.log("\nTHINK");
 
     const resp = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openrouter/auto",
       messages,
       tools,
       tool_choice: "auto",
@@ -1605,14 +1605,18 @@ async function reactTurn(client, messages) {
 //  MAIN — CLI loop
 // ─────────────────────────────────────────────────────────────
 async function main() {
-  if (!process.env.GROQ_API_KEY) {
-    console.error("Missing GROQ_API_KEY in .env file.");
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.error("Missing OPENROUTER_API_KEY in .env file. Get one free at https://openrouter.ai/keys");
     process.exit(1);
   }
 
   const client = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
-    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: process.env.OPENROUTER_API_KEY,
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultHeaders: {
+      "HTTP-Referer": "https://github.com/scaler-clone-agent",
+      "X-Title": "Scaler Website Cloner Agent",
+    },
   });
 
   const rl = readline.createInterface({
