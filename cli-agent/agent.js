@@ -319,7 +319,7 @@ async function reactTurn(client, messages) {
     console.log("\nTHINK");
 
     const resp = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: 'llama3-70b-8192',
       messages,
       tools,
       tool_choice: "auto",
@@ -376,8 +376,9 @@ async function main() {
   }
 
   const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1"
+});
 
   const rl = readline.createInterface({
     input: process.stdin,
